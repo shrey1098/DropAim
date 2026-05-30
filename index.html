@@ -2,8 +2,35 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Drone Drop — Aim Point Calculator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DROP·AIM">
+<meta name="theme-color" content="#080c10">
+<meta name="description" content="Drone payload drop aim point calculator with live wind, physics engine, and camera view">
+
+<title>DROP·AIM — Payload Calculator</title>
+
+<!-- Inline manifest (no separate file needed) -->
+<link rel="manifest" href="data:application/manifest+json,{
+  %22name%22:%22DROP·AIM%20Payload%20Calculator%22,
+  %22short_name%22:%22DROP·AIM%22,
+  %22description%22:%22Drone%20payload%20drop%20aim%20point%20calculator%22,
+  %22start_url%22:%22.%22,
+  %22display%22:%22standalone%22,
+  %22background_color%22:%22%23080c10%22,
+  %22theme_color%22:%22%23080c10%22,
+  %22orientation%22:%22any%22,
+  %22icons%22:[
+    {%22src%22:%22data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20512%20512'%3E%3Crect%20width='512'%20height='512'%20fill='%23080c10'/%3E%3Ccircle%20cx='256'%20cy='256'%20r='200'%20fill='none'%20stroke='%2300e5ff'%20stroke-width='8'/%3E%3Ccircle%20cx='256'%20cy='256'%20r='140'%20fill='none'%20stroke='%2300e5ff'%20stroke-width='4'%20opacity='0.6'/%3E%3Ccircle%20cx='256'%20cy='256'%20r='80'%20fill='none'%20stroke='%2300e5ff'%20stroke-width='4'%20opacity='0.4'/%3E%3Ccircle%20cx='256'%20cy='256'%20r='12'%20fill='%2300e5ff'/%3E%3Cline%20x1='256'%20y1='56'%20x2='256'%20y2='456'%20stroke='%2300e5ff'%20stroke-width='2'%20opacity='0.3'/%3E%3Cline%20x1='56'%20y1='256'%20x2='456'%20y2='256'%20stroke='%2300e5ff'%20stroke-width='2'%20opacity='0.3'/%3E%3Ctext%20x='256'%20y='310'%20text-anchor='middle'%20fill='%2300e5ff'%20font-size='48'%20font-family='monospace'%20font-weight='bold'%3EAIM%3C/text%3E%3C/svg%3E%22,
+      %22sizes%22:%22512x512%22,%22type%22:%22image/svg+xml%22,%22purpose%22:%22any%20maskable%22}
+  ]
+}">
+
+<!-- Apple touch icon (inline SVG as data URL) -->
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20180%20180'%3E%3Crect%20width='180'%20height='180'%20rx='40'%20fill='%23080c10'/%3E%3Ccircle%20cx='90'%20cy='90'%20r='70'%20fill='none'%20stroke='%2300e5ff'%20stroke-width='4'/%3E%3Ccircle%20cx='90'%20cy='90'%20r='48'%20fill='none'%20stroke='%2300e5ff'%20stroke-width='3'%20opacity='0.6'/%3E%3Ccircle%20cx='90'%20cy='90'%20r='26'%20fill='none'%20stroke='%2300e5ff'%20stroke-width='3'%20opacity='0.4'/%3E%3Ccircle%20cx='90'%20cy='90'%20r='5'%20fill='%2300e5ff'/%3E%3Cline%20x1='90'%20y1='20'%20x2='90'%20y2='160'%20stroke='%2300e5ff'%20stroke-width='1.5'%20opacity='0.3'/%3E%3Cline%20x1='20'%20y1='90'%20x2='160'%20y2='90'%20stroke='%2300e5ff'%20stroke-width='1.5'%20opacity='0.3'/%3E%3Ctext%20x='90'%20y='112'%20text-anchor='middle'%20fill='%2300e5ff'%20font-size='18'%20font-family='monospace'%20font-weight='bold'%3EAIM%3C/text%3E%3C/svg%3E">
+
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
 
@@ -21,6 +48,11 @@
   --muted:   #3d607a;
   --header-h: 52px;
   --tabnav-h: 52px;
+  /* iPhone safe areas */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
 }
 
 *{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -53,10 +85,12 @@ body::before {
 /* ── HEADER ── */
 header {
   position:fixed;top:0;left:0;right:0;
-  height:var(--header-h);
+  height:calc(var(--header-h) + var(--sat));
+  padding-top:var(--sat);
   z-index:200;
   display:flex;align-items:center;gap:12px;
-  padding:0 16px;
+  padding-left:calc(16px + var(--sal));
+  padding-right:calc(16px + var(--sar));
   border-bottom:1px solid var(--border);
   background:rgba(8,12,16,0.97);
   backdrop-filter:blur(10px);
@@ -81,7 +115,8 @@ header {
 .tab-nav {
   display:flex;
   position:fixed;bottom:0;left:0;right:0;
-  height:var(--tabnav-h);
+  height:calc(var(--tabnav-h) + var(--sab));
+  padding-bottom:var(--sab);
   z-index:200;
   border-top:1px solid var(--border);
   background:rgba(8,12,16,0.97);
@@ -102,9 +137,10 @@ header {
 /* ── MOBILE LAYOUT ── */
 .layout {
   position:fixed;
-  top:var(--header-h);
-  left:0;right:0;
-  bottom:var(--tabnav-h);
+  top:calc(var(--header-h) + var(--sat));
+  left:var(--sal);
+  right:var(--sar);
+  bottom:calc(var(--tabnav-h) + var(--sab));
   z-index:1;
 }
 
@@ -1477,6 +1513,65 @@ window.addEventListener('resize', () => {
   resizeCam();
   drawCompass();
 });
+
+// ── PWA SERVICE WORKER (inline) ───────────────────────────────────
+if('serviceWorker' in navigator) {
+  const swCode = `
+const CACHE = 'dropaim-v1';
+const FONTS = [
+  'https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap'
+];
+
+self.addEventListener('install', e => {
+  e.waitUntil(
+    caches.open(CACHE).then(c => c.addAll(FONTS).catch(() => {}))
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    )
+  );
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', e => {
+  const url = e.request.url;
+
+  // Always try network first for wind API calls
+  if(url.includes('open-meteo.com') || url.includes('geocoding-api')) {
+    e.respondWith(
+      fetch(e.request).catch(() =>
+        new Response(JSON.stringify({error:'offline'}), {headers:{'Content-Type':'application/json'}})
+      )
+    );
+    return;
+  }
+
+  // Cache-first for fonts and static assets
+  e.respondWith(
+    caches.match(e.request).then(cached => {
+      if(cached) return cached;
+      return fetch(e.request).then(resp => {
+        if(resp && resp.status === 200) {
+          const clone = resp.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+        }
+        return resp;
+      }).catch(() => cached);
+    })
+  );
+});
+  `;
+  const blob = new Blob([swCode], {type:'text/javascript'});
+  const swUrl = URL.createObjectURL(blob);
+  navigator.serviceWorker.register(swUrl, {scope:'/'})
+    .then(() => console.log('SW registered'))
+    .catch(e => console.log('SW registration failed (normal in file:// mode)', e));
+}
 </script>
 
 </body>
