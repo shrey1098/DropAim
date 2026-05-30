@@ -1,0 +1,1916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drone Log Replay — Drop Calculator</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Bebas+Neue&family=Share+Tech+Mono&display=swap');
+
+:root {
+  --bg:      #04080c;
+  --s1:      #080f18;
+  --s2:      #0c1620;
+  --border:  #152030;
+  --border2: #1e3a50;
+  --accent:  #00c8ff;
+  --green:   #00ff99;
+  --red:     #ff2244;
+  --orange:  #ff8800;
+  --gold:    #ffc800;
+  --dim:     #2a4a62;
+  --text:    #8ab8d0;
+  --bright:  #c8e8f8;
+}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+
+body {
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Share Tech Mono',monospace;
+  font-size:13px;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* Grid bg */
+body::before {
+  content:'';position:fixed;inset:0;
+  background-image:
+    linear-gradient(rgba(0,200,255,0.02) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,200,255,0.02) 1px,transparent 1px);
+  background-size:32px 32px;
+  pointer-events:none;z-index:0;
+}
+
+/* ── HEADER ── */
+header {
+  position:relative;z-index:10;
+  display:flex;align-items:center;gap:20px;
+  padding:12px 24px;
+  border-bottom:1px solid var(--border2);
+  background:rgba(4,8,12,0.97);
+}
+
+.title {
+  font-family:'Bebas Neue',sans-serif;
+  font-size:26px;letter-spacing:4px;
+  color:var(--accent);
+  text-shadow:0 0 30px rgba(0,200,255,0.4);
+}
+
+.subtitle {font-size:10px;color:var(--dim);letter-spacing:2px;margin-top:2px;}
+
+.hright {
+  margin-left:auto;
+  display:flex;align-items:center;gap:12px;
+}
+
+.pill {
+  font-size:9px;letter-spacing:2px;
+  padding:3px 10px;
+  border-radius:1px;
+}
+
+.pill-acc{border:1px solid var(--accent);color:var(--accent);}
+.pill-grn{border:1px solid var(--green);color:var(--green);}
+.pill-red{border:1px solid var(--red);color:var(--red);}
+
+/* ── LAYOUT ── */
+.layout {
+  position:relative;z-index:1;
+  display:grid;
+  grid-template-columns:340px 1fr;
+  grid-template-rows:1fr auto;
+  height:calc(100vh - 57px);
+}
+
+/* ── SIDEBAR ── */
+.sidebar {
+  border-right:1px solid var(--border2);
+  background:var(--s1);
+  overflow-y:auto;
+  display:flex;flex-direction:column;
+  gap:0;
+}
+.sidebar::-webkit-scrollbar{width:3px;}
+.sidebar::-webkit-scrollbar-thumb{background:var(--border2);}
+
+.sb-sec {
+  border-bottom:1px solid var(--border);
+  padding:14px 16px;
+}
+
+.sb-head {
+  font-size:9px;letter-spacing:3px;color:var(--accent);
+  text-transform:uppercase;margin-bottom:10px;
+  display:flex;align-items:center;gap:8px;
+}
+
+.sb-head::after {
+  content:'';flex:1;height:1px;background:var(--border2);
+}
+
+/* Upload zone */
+.upload-zone {
+  border:1px dashed var(--border2);
+  border-radius:2px;
+  padding:24px 16px;
+  text-align:center;
+  cursor:pointer;
+  transition:all 0.2s;
+  position:relative;
+}
+.upload-zone:hover,.upload-zone.drag{
+  border-color:var(--accent);
+  background:rgba(0,200,255,0.04);
+}
+.upload-zone input{
+  position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;
+}
+.upload-icon{font-size:28px;margin-bottom:8px;}
+.upload-label{font-size:11px;color:var(--dim);letter-spacing:1px;}
+.upload-types{font-size:9px;color:var(--dim);margin-top:4px;}
+
+/* File info */
+.file-info {
+  display:none;
+  background:rgba(0,255,153,0.04);
+  border:1px solid rgba(0,255,153,0.2);
+  border-radius:2px;
+  padding:8px 12px;
+  font-size:11px;color:var(--green);
+}
+
+/* Parse progress */
+.parse-bar-wrap {
+  display:none;
+  margin-top:8px;
+}
+.parse-bar-bg {
+  background:var(--border);
+  height:3px;border-radius:1px;overflow:hidden;
+}
+.parse-bar-fill {
+  height:100%;
+  background:var(--accent);
+  width:0%;
+  transition:width 0.1s;
+  box-shadow:0 0 8px var(--accent);
+}
+.parse-status {font-size:9px;color:var(--dim);margin-top:4px;letter-spacing:1px;}
+
+/* Stat grid */
+.stat-grid {
+  display:grid;grid-template-columns:1fr 1fr;gap:6px;
+  margin-top:4px;
+}
+.stat-cell {
+  background:var(--s2);
+  border:1px solid var(--border);
+  border-radius:1px;
+  padding:6px 8px;
+}
+.stat-cell .sl{font-size:8px;color:var(--dim);letter-spacing:1px;}
+.stat-cell .sv{font-size:13px;color:var(--bright);font-family:'Courier Prime',monospace;}
+
+/* Payload params */
+.param {display:flex;flex-direction:column;gap:3px;margin-bottom:8px;}
+.param label{font-size:10px;color:var(--dim);display:flex;justify-content:space-between;}
+.param label span{color:var(--accent);}
+input[type=range]{
+  -webkit-appearance:none;width:100%;height:2px;
+  background:var(--border2);outline:none;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:11px;height:11px;border-radius:50%;
+  background:var(--accent);cursor:pointer;box-shadow:0 0 6px var(--accent);
+}
+
+/* Buttons */
+.btn {
+  width:100%;padding:9px;
+  background:transparent;
+  border:1px solid var(--accent);
+  color:var(--accent);
+  font-family:'Share Tech Mono',monospace;
+  font-size:11px;letter-spacing:2px;text-transform:uppercase;
+  cursor:pointer;transition:all 0.15s;border-radius:1px;
+}
+.btn:hover{background:var(--accent);color:var(--bg);box-shadow:0 0 20px var(--accent);}
+.btn:disabled{opacity:0.3;cursor:not-allowed;}
+.btn-grn{border-color:var(--green);color:var(--green);}
+.btn-grn:hover{background:var(--green);box-shadow:0 0 20px var(--green);}
+.btn-red{border-color:var(--red);color:var(--red);}
+.btn-red:hover{background:var(--red);box-shadow:0 0 20px var(--red);}
+
+/* Release snapshot */
+.snapshot {
+  display:none;
+  background:var(--s2);
+  border:1px solid var(--gold);
+  border-radius:2px;
+  padding:10px;
+}
+.snap-row{
+  display:flex;justify-content:space-between;
+  padding:3px 0;
+  border-bottom:1px solid var(--border);
+  font-size:11px;
+}
+.snap-row:last-child{border-bottom:none;}
+.snap-row .sk{color:var(--dim);}
+.snap-row .sv{color:var(--gold);font-family:'Courier Prime',monospace;}
+
+/* Result box */
+.result-box {
+  display:none;
+  background:rgba(0,255,153,0.04);
+  border:1px solid var(--green);
+  border-radius:2px;
+  padding:12px;
+}
+.result-title{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:18px;letter-spacing:3px;color:var(--green);margin-bottom:8px;
+}
+.result-row{
+  display:flex;justify-content:space-between;
+  padding:4px 0;border-bottom:1px solid var(--border);
+  font-size:11px;
+}
+.result-row:last-child{border-bottom:none;}
+.result-row .rk{color:var(--dim);}
+.result-row .rv{color:var(--green);font-family:'Courier Prime',monospace;}
+.result-row .rv.warn{color:var(--orange);}
+
+.compare-box{
+  display:none;
+  margin-top:8px;
+  background:rgba(255,136,0,0.04);
+  border:1px solid rgba(255,136,0,0.3);
+  border-radius:2px;
+  padding:10px;
+  font-size:10px;
+}
+.compare-title{color:var(--orange);letter-spacing:2px;margin-bottom:6px;}
+
+/* ── MAIN ── */
+.main {
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+
+/* Timeline */
+.timeline-wrap {
+  border-bottom:1px solid var(--border2);
+  background:var(--s1);
+  padding:12px 20px;
+}
+
+.tl-label {
+  font-size:9px;color:var(--dim);letter-spacing:2px;
+  margin-bottom:6px;display:flex;justify-content:space-between;
+}
+
+.tl-track {
+  position:relative;
+  height:48px;
+  background:var(--s2);
+  border:1px solid var(--border2);
+  border-radius:2px;
+  cursor:crosshair;
+  overflow:hidden;
+}
+
+/* attitude waveform drawn by canvas */
+canvas#tlCanvas {
+  position:absolute;inset:0;width:100%;height:100%;
+}
+
+/* Scrubber */
+.scrubber {
+  position:absolute;top:0;bottom:0;width:2px;
+  background:var(--accent);
+  box-shadow:0 0 8px var(--accent);
+  pointer-events:none;
+  transition:left 0.05s;
+}
+
+.release-marker {
+  position:absolute;top:0;bottom:0;width:2px;
+  background:var(--gold);
+  box-shadow:0 0 8px var(--gold);
+  pointer-events:none;
+  display:none;
+}
+
+.release-marker::after {
+  content:'DROP';
+  position:absolute;top:2px;left:4px;
+  font-size:8px;color:var(--gold);letter-spacing:1px;
+}
+
+.tl-time {
+  font-family:'Courier Prime',monospace;
+  font-size:11px;color:var(--accent);
+  margin-top:4px;
+  display:flex;justify-content:space-between;
+}
+
+/* Attitude bar */
+.att-bar {
+  display:flex;gap:12px;
+  margin-top:8px;
+}
+.att-chip {
+  flex:1;
+  background:var(--s2);border:1px solid var(--border2);
+  border-radius:1px;padding:5px 8px;
+  display:flex;flex-direction:column;gap:1px;
+}
+.att-chip .al{font-size:8px;color:var(--dim);letter-spacing:1px;}
+.att-chip .av{font-family:'Courier Prime',monospace;font-size:14px;color:var(--bright);}
+.att-chip .av.pos{color:var(--green);}
+.att-chip .av.neg{color:var(--red);}
+
+/* Visual area */
+.visual-wrap {
+  flex:1;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:0;
+  overflow:hidden;
+}
+
+/* GPS track */
+#gpsCanvas {
+  width:100%;height:100%;display:block;
+  background:var(--bg);
+}
+
+/* Side view */
+.side-wrap {
+  border-left:1px solid var(--border2);
+  display:flex;flex-direction:column;
+}
+
+#sideCanvas {
+  flex:1;display:block;width:100%;
+  background:var(--bg);
+}
+
+.side-label {
+  padding:4px 12px;
+  font-size:9px;color:var(--dim);letter-spacing:2px;
+  border-top:1px solid var(--border);
+  background:var(--s1);
+}
+
+/* Bottom bar */
+.bottom-bar {
+  border-top:1px solid var(--border2);
+  background:var(--s1);
+  padding:8px 20px;
+  display:flex;align-items:center;gap:12px;
+}
+
+.tl-btn {
+  padding:5px 14px;
+  background:transparent;
+  border:1px solid var(--border2);
+  color:var(--dim);
+  font-family:'Share Tech Mono',monospace;
+  font-size:10px;letter-spacing:1px;
+  cursor:pointer;border-radius:1px;
+  transition:all 0.1s;
+}
+.tl-btn:hover{border-color:var(--accent);color:var(--accent);}
+.tl-btn.active{border-color:var(--green);color:var(--green);background:rgba(0,255,153,0.06);}
+
+.spd-label{font-size:10px;color:var(--dim);}
+
+.empty-state {
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;color:var(--dim);
+  pointer-events:none;
+}
+/* Cursor marker pulse */
+@keyframes markerPulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(0,200,255,0.6); }
+  50%      { box-shadow: 0 0 0 8px rgba(0,200,255,0); }
+}
+
+.empty-icon{font-size:48px;opacity:0.3;}
+.empty-text{font-size:11px;letter-spacing:2px;opacity:0.5;}
+
+.shape-btn {
+  flex:1;padding:6px 4px;
+  background:transparent;
+  border:1px solid var(--border2);
+  color:var(--dim);
+  font-family:'Share Tech Mono',monospace;
+  font-size:10px;letter-spacing:1px;
+  cursor:pointer;border-radius:1px;
+  transition:all 0.15s;
+}
+.shape-btn.active {
+  border-color:var(--accent);color:var(--accent);
+  background:rgba(0,200,255,0.07);
+}
+.shape-btn:hover:not(.active){border-color:var(--dim);color:var(--text);}
+
+/* Camera aim panel — shown after calculate */
+.cam-panel {
+  display:none;
+  border-top:1px solid var(--border2);
+  background:var(--s1);
+  padding:12px 16px;
+  flex-direction:column;gap:8px;
+}
+.cam-panel.show{display:flex;}
+.cam-panel-head {
+  font-size:9px;color:var(--accent);letter-spacing:3px;
+  border-bottom:1px solid var(--border);padding-bottom:6px;
+}
+.cam-canvas-wrap {
+  position:relative;
+  width:200px;height:200px;
+  align-self:center;
+  border:1px solid var(--accent);
+  box-shadow:0 0 20px rgba(0,200,255,0.1);
+}
+#camMini{width:100%;height:100%;display:block;}
+.aim-instruction2 {
+  font-size:10px;color:var(--green);
+  background:rgba(0,255,153,0.04);
+  border:1px solid rgba(0,255,153,0.25);
+  padding:8px 10px;
+  border-radius:1px;
+  line-height:1.6;
+  letter-spacing:0.5px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="title">LOG REPLAY · DROP CALCULATOR</div>
+    <div class="subtitle">ARDUPILOT BIN · MAVLINK TLOG · PX4 ULG · SKYDROID · CSV</div>
+  </div>
+  <div class="hright">
+    <div class="pill pill-acc" id="parseStatus">NO LOG</div>
+    <div class="pill pill-grn" id="physicsStatus" style="display:none">PHYSICS READY</div>
+  </div>
+</header>
+
+<div class="layout">
+
+<!-- ══════════ SIDEBAR ══════════ -->
+<div class="sidebar">
+
+  <!-- Upload -->
+  <div class="sb-sec">
+    <div class="sb-head">01 · LOG FILE</div>
+    <div class="upload-zone" id="uploadZone">
+      <input type="file" id="fileInput" accept=".bin,.tlog,.ulg,.log,.csv,.txt">
+      <div class="upload-icon">📂</div>
+      <div class="upload-label">DROP LOG FILE HERE</div>
+      <div class="upload-types">.bin · .tlog · .ulg · .log · .csv · .txt</div>
+    </div>
+    <div class="file-info" id="fileInfo"></div>
+    <div class="parse-bar-wrap" id="parseBarWrap">
+      <div class="parse-bar-bg"><div class="parse-bar-fill" id="parseBarFill"></div></div>
+      <div class="parse-status" id="parseStatusText">Parsing…</div>
+    </div>
+  </div>
+
+  <!-- Log stats -->
+  <div class="sb-sec" id="logStatsSection" style="display:none">
+    <div class="sb-head">02 · LOG STATS</div>
+    <div class="stat-grid" id="logStats"></div>
+  </div>
+
+  <!-- Wind -->
+  <div class="sb-sec">
+    <div class="sb-head">03 · WIND</div>
+    <div style="font-size:9px;color:var(--dim);letter-spacing:0.5px;line-height:1.6;margin-bottom:8px;">
+      Log FC wind estimate used when available. Override below if needed.
+    </div>
+    <div class="param">
+      <label>Location <span id="windLocStatus">—</span></label>
+      <div style="display:flex;gap:6px;">
+        <input type="text" id="windLocInput" placeholder="e.g. Jaisalmer" value="Jaipur, Rajasthan"
+          style="background:var(--s2);border:1px solid var(--border2);color:var(--accent);
+                 font-family:'Share Tech Mono',monospace;font-size:11px;padding:5px 8px;flex:1;outline:none;">
+        <button class="btn" id="fetchWindBtn2"
+          style="width:auto;padding:5px 10px;font-size:10px;border-color:var(--gold);color:var(--gold);">
+          FETCH
+        </button>
+      </div>
+    </div>
+    <div id="windLiveBox2" style="display:none;background:rgba(255,200,0,0.04);border:1px solid rgba(255,200,0,0.2);
+         padding:7px 10px;border-radius:1px;font-size:10px;color:var(--gold);margin-bottom:6px;line-height:1.6;">
+    </div>
+    <div class="param">
+      <label>Wind Speed override <span id="wsLbl">0.0 m/s</span></label>
+      <input type="range" id="ws" min="0" max="20" value="0" step="0.1">
+    </div>
+    <div class="param">
+      <label>Wind Direction (FROM °True) <span id="wdLbl">0° (N)</span></label>
+      <input type="range" id="wd" min="0" max="359" value="0" step="1">
+    </div>
+    <div style="font-size:9px;color:var(--dim);margin-top:2px;">
+      ⚠ If log has WIND messages, those take priority. Override only when needed.
+    </div>
+  </div>
+
+  <!-- Payload -->
+  <div class="sb-sec">
+    <div class="sb-head">04 · PAYLOAD PARAMS</div>
+    <div class="param">
+      <label>Mass <span id="pmLbl">0.50 kg</span></label>
+      <input type="range" id="pm" min="0.05" max="5" value="0.5" step="0.05">
+    </div>
+    <div class="param">
+      <label>Drag Cd <span id="cdLbl">0.47</span></label>
+      <input type="range" id="cd" min="0.05" max="1.5" value="0.47" step="0.01">
+    </div>
+    <div class="param">
+      <label>Cross-section <span id="aLbl">0.010 m²</span></label>
+      <input type="range" id="pa" min="0.001" max="0.15" value="0.01" step="0.001">
+    </div>
+    <div class="param">
+      <label>Air Density ρ <span id="rhoLbl">1.225</span></label>
+      <input type="range" id="rho" min="0.9" max="1.4" value="1.225" step="0.005">
+    </div>
+  </div>
+
+  <!-- Release controls -->
+  <div class="sb-sec">
+    <div class="sb-head">05 · TARGET & CAMERA</div>
+
+    <div style="font-size:9px;color:var(--dim);letter-spacing:0.5px;margin-bottom:8px;">TARGET SHAPE</div>
+    <div style="display:flex;gap:6px;margin-bottom:10px;">
+      <button class="shape-btn active" id="shapeCircle2" onclick="setShape2('circle')">⬤ CIRCLES</button>
+      <button class="shape-btn" id="shapeSquare2" onclick="setShape2('square')">■ SQUARES</button>
+    </div>
+
+    <div class="param">
+      <label>Target top faces (°True) <span id="torLbl2">0° (N)</span></label>
+      <input type="range" id="tor2" min="0" max="359" value="0" step="1">
+    </div>
+    <div class="param">
+      <label>Preset</label>
+      <select id="torPreset2" style="background:var(--s2);border:1px solid var(--border2);
+              color:var(--accent);font-family:'Share Tech Mono',monospace;font-size:11px;
+              padding:5px 8px;width:100%;outline:none;">
+        <option value="0">North (0°)</option>
+        <option value="90">East (90°)</option>
+        <option value="180">South (180°)</option>
+        <option value="270">West (270°)</option>
+        <option value="45">NE (45°)</option>
+        <option value="315">NW (315°)</option>
+      </select>
+    </div>
+
+    <div style="font-size:9px;color:var(--dim);letter-spacing:0.5px;margin:10px 0 6px;">CAMERA OFFSET FROM DROP POINT</div>
+    <div style="font-size:9px;color:var(--dim);line-height:1.5;margin-bottom:6px;">
+      Forward/right relative to drone heading (= target top direction).
+    </div>
+    <div class="param">
+      <label>Forward offset <span id="camFwdLbl2">0.00 m</span></label>
+      <input type="range" id="camFwd2" min="-0.5" max="0.5" value="0" step="0.01">
+    </div>
+    <div class="param">
+      <label>Right offset <span id="camRightLbl2">0.00 m</span></label>
+      <input type="range" id="camRight2" min="-0.5" max="0.5" value="0" step="0.01">
+    </div>
+  </div>
+
+  <!-- Release controls -->
+  <div class="sb-sec">
+    <div class="sb-head">06 · RELEASE POINT</div>
+    <button class="btn btn-red" id="markRelBtn" disabled>⬤ MARK RELEASE AT CURSOR</button>
+    <div style="margin-top:8px;">
+      <button class="btn btn-grn" id="calcBtn" disabled style="margin-top:0;">⬤ CALCULATE DROP</button>
+    </div>
+    <div class="snapshot" id="snapBox" style="margin-top:10px;"></div>
+  </div>
+
+  <!-- Results -->
+  <div class="sb-sec" id="resultsSection">
+    <div class="sb-head">07 · DROP SOLUTION</div>
+    <div class="result-box" id="resultBox"></div>
+    <div class="compare-box" id="compareBox"></div>
+  </div>
+
+  <!-- Camera aim view -->
+  <div class="cam-panel" id="camPanel">
+    <div class="cam-panel-head">📷 AIM POINT — CAMERA VIEW</div>
+    <div class="cam-canvas-wrap">
+      <canvas id="camMini" width="200" height="200"></canvas>
+    </div>
+    <div class="aim-instruction2" id="aimInstr2">—</div>
+  </div>
+
+</div><!-- end sidebar -->
+<div class="main">
+
+  <!-- Timeline -->
+  <div class="timeline-wrap">
+    <div class="tl-label">
+      <span>ATTITUDE TIMELINE — drag to scrub</span>
+      <span id="tlCursorTime">T+0.00s</span>
+    </div>
+    <div class="tl-track" id="tlTrack">
+      <canvas id="tlCanvas"></canvas>
+      <div class="scrubber" id="scrubber" style="left:0%"></div>
+      <div class="release-marker" id="releaseMarker"></div>
+    </div>
+    <div class="tl-time">
+      <span id="tlStart">00:00</span>
+      <span id="tlEnd">00:00</span>
+    </div>
+    <div class="att-bar">
+      <div class="att-chip">
+        <div class="al">ROLL</div>
+        <div class="av" id="attRoll">—°</div>
+      </div>
+      <div class="att-chip">
+        <div class="al">PITCH</div>
+        <div class="av" id="attPitch">—°</div>
+      </div>
+      <div class="att-chip">
+        <div class="al">YAW</div>
+        <div class="av" id="attYaw">—°</div>
+      </div>
+      <div class="att-chip">
+        <div class="al">ALT AGL</div>
+        <div class="av" id="attAlt">—m</div>
+      </div>
+      <div class="att-chip">
+        <div class="al">GND SPD</div>
+        <div class="av" id="attSpd">—m/s</div>
+      </div>
+      <div class="att-chip">
+        <div class="al">WIND EST</div>
+        <div class="av" id="attWind">—m/s</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Visuals -->
+  <div class="visual-wrap">
+    <!-- GPS track canvas -->
+    <div style="position:relative;overflow:hidden;">
+      <canvas id="gpsCanvas" style="width:100%;height:100%;display:block;background:var(--bg);"></canvas>
+      <div class="empty-state" id="gpsEmpty">
+        <div class="empty-icon">🛰️</div>
+        <div class="empty-text">GPS TRACK APPEARS AFTER PARSE</div>
+      </div>
+    </div>
+    <!-- Side / profile view -->
+    <div class="side-wrap">
+      <canvas id="sideCanvas"></canvas>
+      <div class="side-label">ALTITUDE PROFILE · SIDE VIEW</div>
+    </div>
+  </div>
+
+  <!-- Playback bar -->
+  <div class="bottom-bar">
+    <button class="tl-btn" id="playBtn" disabled>▶ PLAY</button>
+    <button class="tl-btn" id="pauseBtn" disabled>⏸ PAUSE</button>
+    <button class="tl-btn" id="resetBtn" disabled>⏮ RESET</button>
+    <div style="flex:1;"></div>
+    <div class="spd-label">SPEED:</div>
+    <button class="tl-btn" id="spd1" onclick="setSpeed(1)">1×</button>
+    <button class="tl-btn active" id="spd5" onclick="setSpeed(5)">5×</button>
+    <button class="tl-btn" id="spd20" onclick="setSpeed(20)">20×</button>
+  </div>
+
+</div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// DATA STRUCTURES
+// ══════════════════════════════════════════════════════════
+let flightData = null;
+let curIdx = 0;
+let releaseIdx = null;
+let playTimer = null;
+let playSpeed = 5;
+let targetShape2 = 'circle';
+
+function setShape2(s) {
+  targetShape2 = s;
+  document.getElementById('shapeCircle2').classList.toggle('active', s==='circle');
+  document.getElementById('shapeSquare2').classList.toggle('active', s==='square');
+}
+
+// ══════════════════════════════════════════════════════════
+// WIND FETCH
+// ══════════════════════════════════════════════════════════
+async function geocode2(q) {
+  const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=en&format=json`);
+  const d = await r.json();
+  if(!d.results||!d.results.length) throw new Error('Location not found');
+  return d.results[0];
+}
+async function fetchWind2(lat,lon) {
+  const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=ms&forecast_days=1`);
+  const d = await r.json();
+  return d.current;
+}
+
+document.getElementById('fetchWindBtn2').addEventListener('click', async () => {
+  const q = document.getElementById('windLocInput').value.trim();
+  if(!q) return;
+  document.getElementById('windLocStatus').textContent = 'fetching…';
+  try {
+    const geo  = await geocode2(q);
+    const wind = await fetchWind2(geo.latitude, geo.longitude);
+    const spd = wind.wind_speed_10m, dir = Math.round(wind.wind_direction_10m);
+    document.getElementById('ws').value = spd;
+    document.getElementById('wsLbl').textContent = spd.toFixed(1) + ' m/s';
+    document.getElementById('wd').value = dir;
+    document.getElementById('wdLbl').textContent = dir + '° (' + degToCard(dir) + ')';
+    document.getElementById('windLocStatus').textContent = geo.name;
+    document.getElementById('windLiveBox2').style.display = 'block';
+    document.getElementById('windLiveBox2').textContent =
+      `🌬 ${spd.toFixed(1)} m/s from ${dir}° (${degToCard(dir)})  |  Gusts: ${wind.wind_gusts_10m.toFixed(1)} m/s\n${geo.name}, ${geo.country}`;
+  } catch(e) {
+    document.getElementById('windLocStatus').textContent = 'ERROR';
+  }
+});
+
+
+// ══════════════════════════════════════════════════════════
+// SLIDERS
+// ══════════════════════════════════════════════════════════
+function bindSlider(id, lblId, fmt) {
+  const el = document.getElementById(id);
+  const lb = document.getElementById(lblId);
+  el.addEventListener('input', () => { lb.textContent = fmt(parseFloat(el.value)); });
+}
+bindSlider('pm', 'pmLbl', v => v.toFixed(2) + ' kg');
+bindSlider('cd', 'cdLbl', v => v.toFixed(2));
+bindSlider('pa', 'aLbl',  v => v.toFixed(3) + ' m²');
+bindSlider('rho','rhoLbl',v => v.toFixed(3));
+bindSlider('ws', 'wsLbl', v => v.toFixed(1) + ' m/s');
+bindSlider('wd', 'wdLbl', v => v + '° (' + degToCard(v) + ')');
+bindSlider('tor2','torLbl2', v => v + '° (' + degToCard(v) + ')');
+bindSlider('camFwd2',  'camFwdLbl2',   v => (v>=0?'+':'')+v.toFixed(2)+' m');
+bindSlider('camRight2','camRightLbl2', v => (v>=0?'+':'')+v.toFixed(2)+' m');
+
+document.getElementById('torPreset2').addEventListener('change', e => {
+  document.getElementById('tor2').value = e.target.value;
+  document.getElementById('torLbl2').textContent = e.target.value + '° (' + degToCard(e.target.value) + ')';
+});
+
+// ══════════════════════════════════════════════════════════
+// FILE UPLOAD + PARSING
+// ══════════════════════════════════════════════════════════
+const uploadZone = document.getElementById('uploadZone');
+const fileInput  = document.getElementById('fileInput');
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if(f) handleFile(f);
+});
+fileInput.addEventListener('change', e => { if(e.target.files[0]) handleFile(e.target.files[0]); });
+
+function handleFile(file) {
+  document.getElementById('fileInfo').style.display = 'block';
+  document.getElementById('fileInfo').textContent = `📄 ${file.name}  (${(file.size/1024).toFixed(1)} KB)`;
+  document.getElementById('parseBarWrap').style.display = 'block';
+  document.getElementById('parseStatus').textContent = 'PARSING…';
+  setProgress(10, 'Reading file…');
+
+  const ext = file.name.split('.').pop().toLowerCase();
+  const reader = new FileReader();
+
+  reader.onload = e => {
+    setProgress(40, 'Decoding messages…');
+    setTimeout(() => {
+      try {
+        let data;
+        if(ext === 'bin' || ext === 'log') data = parseBIN(e.target.result);
+        else if(ext === 'tlog')            data = parseTLOG(e.target.result);
+        else                               data = parseCSV(e.target.result);
+
+        if(!data || data.frames.length < 2) throw new Error('No usable data extracted');
+
+        flightData = data;
+        setProgress(100, `Loaded ${data.frames.length} frames`);
+        document.getElementById('parseStatus').textContent = 'PARSED ✓';
+        document.getElementById('physicsStatus').style.display = 'inline';
+
+        showLogStats(data);
+        enableControls();
+        curIdx = 0;
+        releaseIdx = null;
+        document.getElementById('releaseMarker').style.display = 'none';
+        drawTimeline();
+        updateScrubber();
+        drawGPSTrack();
+        drawSideView();
+      } catch(err) {
+        setProgress(100, 'Error: ' + err.message);
+        document.getElementById('parseStatus').textContent = 'ERROR';
+      }
+    }, 50);
+  };
+
+  if(ext === 'bin' || ext === 'log' || ext === 'tlog') reader.readAsArrayBuffer(file);
+  else reader.readAsText(file);
+}
+
+function setProgress(pct, msg) {
+  document.getElementById('parseBarFill').style.width = pct + '%';
+  document.getElementById('parseStatusText').textContent = msg;
+}
+
+// ══════════════════════════════════════════════════════════
+// PARSERS
+// ══════════════════════════════════════════════════════════
+
+// ── ArduPilot BIN parser ──
+function parseBIN(buffer) {
+  const u8 = new Uint8Array(buffer);
+  const dv = new DataView(buffer);
+  const frames = [];
+  const fmts = {}; // msg type → format descriptor
+
+  let i = 0;
+  let t0 = null;
+
+  // Helpers
+  const readStr = (start, len) => {
+    let s = '';
+    for(let k=0;k<len;k++) { const c=u8[start+k]; if(c===0) break; s+=String.fromCharCode(c); }
+    return s;
+  };
+
+  while(i < u8.length - 3) {
+    if(u8[i] !== 0xA3 || u8[i+1] !== 0x95) { i++; continue; }
+    const msgType = u8[i+2];
+    i += 3;
+
+    // FMT message → type 128
+    if(msgType === 128) {
+      if(i + 86 > u8.length) break;
+      const type   = u8[i];
+      const length = u8[i+1];
+      const name   = readStr(i+2, 4);
+      const format = readStr(i+6, 16);
+      const labels = readStr(i+22, 64);
+      fmts[type] = { name, length, format, labels: labels.split(',') };
+      i += 83; // FMT body is 86-3 bytes
+      continue;
+    }
+
+    const fmt = fmts[msgType];
+    if(!fmt || fmt.length < 3) { i++; continue; }
+    const bodyLen = fmt.length - 3;
+    if(i + bodyLen > u8.length) break;
+
+    // Parse by message name
+    if(fmt.name === 'ATT') {
+      // TimeUS, DesRoll, Roll, DesPitch, Pitch, DesYaw, Yaw, ErrRP, ErrYaw
+      try {
+        const timeUS = dv.getUint32(i, true) + dv.getUint32(i+4, true) * 4294967296;
+        const t = timeUS / 1e6;
+        if(t0 === null) t0 = t;
+        const roll  = dv.getFloat32(i+12, true);
+        const pitch = dv.getFloat32(i+20, true);
+        const yaw   = dv.getFloat32(i+28, true);
+        frames.push({ t: t-t0, type:'ATT', roll, pitch, yaw });
+      } catch(e){}
+    } else if(fmt.name === 'GPS') {
+      try {
+        const timeUS = dv.getUint32(i, true) + dv.getUint32(i+4, true) * 4294967296;
+        const t = timeUS / 1e6;
+        if(t0 === null) t0 = t;
+        const lat  = dv.getInt32(i+12, true) * 1e-7;
+        const lon  = dv.getInt32(i+16, true) * 1e-7;
+        const alt  = dv.getFloat32(i+20, true);
+        const spd  = dv.getFloat32(i+24, true);
+        frames.push({ t: t-t0, type:'GPS', lat, lon, alt, spd });
+      } catch(e){}
+    } else if(fmt.name === 'WIND' || fmt.name === 'WINL') {
+      try {
+        const timeUS = dv.getUint32(i, true) + dv.getUint32(i+4, true) * 4294967296;
+        const t = timeUS / 1e6;
+        if(t0 === null) t0 = t;
+        const speed = dv.getFloat32(i+8, true);
+        const dir   = dv.getFloat32(i+12, true);
+        frames.push({ t: t-t0, type:'WIND', speed, dir });
+      } catch(e){}
+    } else if(fmt.name === 'BARO') {
+      try {
+        const timeUS = dv.getUint32(i, true) + dv.getUint32(i+4, true) * 4294967296;
+        const t = timeUS / 1e6;
+        if(t0 === null) t0 = t;
+        const alt = dv.getFloat32(i+8, true);
+        frames.push({ t: t-t0, type:'BARO', alt });
+      } catch(e){}
+    }
+
+    i += bodyLen;
+  }
+
+  return buildUnifiedFrames(frames, t0 || 0);
+}
+
+// ── MAVLink TLOG parser ──
+function parseTLOG(buffer) {
+  const u8 = new Uint8Array(buffer);
+  const dv = new DataView(buffer);
+  const frames = [];
+  let t0 = null;
+  let i = 0;
+
+  // TLOG: 8-byte timestamp prefix + MAVLink packet
+  while(i < u8.length - 16) {
+    // Read timestamp (microseconds, big-endian)
+    let ts = 0;
+    for(let b=0;b<8;b++) ts = ts * 256 + u8[i+b];
+    const tSec = ts / 1e6;
+    if(t0 === null) t0 = tSec;
+    const t = tSec - t0;
+    i += 8;
+
+    // MAVLink v1: start byte 0xFE, v2: 0xFD
+    if(u8[i] !== 0xFE && u8[i] !== 0xFD) { i++; continue; }
+    const v2 = u8[i] === 0xFD;
+    const payloadLen = u8[i+1];
+    const msgId = v2
+      ? (u8[i+7] | u8[i+8]<<8 | u8[i+9]<<16)
+      : u8[i+5];
+    const hdrLen = v2 ? 10 : 6;
+    const pOff = i + hdrLen;
+
+    // ATTITUDE = 30
+    if(msgId === 30 && pOff+28 <= u8.length) {
+      const roll  = dv.getFloat32(pOff+4, true)  * 180/Math.PI;
+      const pitch = dv.getFloat32(pOff+8, true)  * 180/Math.PI;
+      const yaw   = dv.getFloat32(pOff+12, true) * 180/Math.PI;
+      frames.push({ t, type:'ATT', roll, pitch, yaw });
+    }
+    // GLOBAL_POSITION_INT = 33
+    if(msgId === 33 && pOff+28 <= u8.length) {
+      const lat  = dv.getInt32(pOff+4, true)  * 1e-7;
+      const lon  = dv.getInt32(pOff+8, true)  * 1e-7;
+      const alt  = dv.getInt32(pOff+12, true) * 1e-3;
+      const vx   = dv.getInt16(pOff+20, true) * 1e-2;
+      const vy   = dv.getInt16(pOff+22, true) * 1e-2;
+      const vz   = dv.getInt16(pOff+24, true) * 1e-2;
+      const spd  = Math.sqrt(vx*vx + vy*vy);
+      frames.push({ t, type:'GPS', lat, lon, alt, spd, vx, vy, vz });
+    }
+    // WIND = 168
+    if(msgId === 168 && pOff+12 <= u8.length) {
+      const dir   = dv.getFloat32(pOff, true)   * 180/Math.PI;
+      const speed = dv.getFloat32(pOff+4, true);
+      frames.push({ t, type:'WIND', speed, dir });
+    }
+
+    i += hdrLen + payloadLen + 2; // +2 for CRC
+  }
+
+  return buildUnifiedFrames(frames, 0);
+}
+
+// ── CSV / generic fallback ──
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const header = lines[0].split(',').map(h => h.trim().toLowerCase());
+  const frames = [];
+
+  const col = (row, ...names) => {
+    for(const n of names) {
+      const idx = header.indexOf(n);
+      if(idx >= 0 && row[idx] !== undefined) return parseFloat(row[idx]);
+    }
+    return null;
+  };
+
+  lines.slice(1).forEach(line => {
+    const row = line.split(',');
+    const t   = col(row,'time','timestamp','t','time_s') || 0;
+    const roll  = col(row,'roll','roll_deg') || 0;
+    const pitch = col(row,'pitch','pitch_deg') || 0;
+    const yaw   = col(row,'yaw','heading','yaw_deg') || 0;
+    const lat   = col(row,'lat','latitude') || null;
+    const lon   = col(row,'lon','lng','longitude') || null;
+    const alt   = col(row,'alt','altitude','alt_m') || null;
+    const spd   = col(row,'speed','groundspeed','spd') || 0;
+    const windspd = col(row,'windspeed','wind_speed','wind') || null;
+    const winddir = col(row,'winddir','wind_dir','wind_direction') || null;
+
+    frames.push({ t, type:'ATT', roll, pitch, yaw });
+    if(lat !== null) frames.push({ t, type:'GPS', lat, lon, alt: alt||0, spd });
+    if(windspd !== null) frames.push({ t, type:'WIND', speed: windspd, dir: winddir||0 });
+  });
+
+  return buildUnifiedFrames(frames, 0);
+}
+
+// ── Build unified frame array ──
+// Each unified frame: { t, roll, pitch, yaw, lat, lon, alt, spd, vx, vy, vz, windSpd, windDir }
+function buildUnifiedFrames(rawFrames, t0) {
+  // Sort by time
+  rawFrames.sort((a,b) => a.t - b.t);
+
+  // Separate by type
+  const attFrames  = rawFrames.filter(f => f.type === 'ATT');
+  const gpsFrames  = rawFrames.filter(f => f.type === 'GPS');
+  const windFrames = rawFrames.filter(f => f.type === 'WIND');
+  const baroFrames = rawFrames.filter(f => f.type === 'BARO');
+
+  if(attFrames.length === 0 && gpsFrames.length === 0) throw new Error('No ATT or GPS data found');
+
+  // Use GPS or ATT as backbone, interpolate others
+  const backbone = (gpsFrames.length > attFrames.length ? gpsFrames : attFrames);
+  const tStart = backbone[0].t;
+  const tEnd   = backbone[backbone.length-1].t;
+
+  // Resample at ~10Hz (every 0.1s)
+  const unified = [];
+  const dt = 0.1;
+
+  let ai=0, gi=0, wi=0, bi=0;
+
+  for(let t = 0; t <= tEnd-tStart; t += dt) {
+    const abs = t + tStart;
+
+    // Advance indices
+    while(ai < attFrames.length-1  && attFrames[ai+1].t  <= abs) ai++;
+    while(gi < gpsFrames.length-1  && gpsFrames[gi+1].t  <= abs) gi++;
+    while(wi < windFrames.length-1 && windFrames[wi+1].t <= abs) wi++;
+    while(bi < baroFrames.length-1 && baroFrames[bi+1].t <= abs) bi++;
+
+    const att  = attFrames[ai]  || {};
+    const gps  = gpsFrames[gi]  || {};
+    const wind = windFrames[wi] || {};
+    const baro = baroFrames[bi] || {};
+
+    // AGL: use baro if available, else GPS alt (very rough)
+    const altAGL = baro.alt !== undefined ? baro.alt : (gps.alt || 0);
+
+    unified.push({
+      t: parseFloat(t.toFixed(2)),
+      roll:    att.roll    ?? 0,
+      pitch:   att.pitch   ?? 0,
+      yaw:     att.yaw     ?? 0,
+      lat:     gps.lat     ?? null,
+      lon:     gps.lon     ?? null,
+      alt:     altAGL,
+      altGPS:  gps.alt     ?? 0,
+      spd:     gps.spd     ?? 0,
+      vx:      gps.vx      ?? 0,
+      vy:      gps.vy      ?? 0,
+      vz:      gps.vz      ?? 0,
+      windSpd: wind.speed  ?? null,
+      windDir: wind.dir    ?? null,
+    });
+  }
+
+  const duration = tEnd - tStart;
+  const maxAlt = Math.max(...unified.map(f => f.alt));
+  const latVals = unified.map(f => f.lat).filter(v => v !== null);
+  const lonVals = unified.map(f => f.lon).filter(v => v !== null);
+  const hasGPS  = latVals.length > 0;
+
+  return {
+    frames: unified,
+    duration,
+    maxAlt,
+    hasGPS,
+    latMin: hasGPS ? Math.min(...latVals) : 0,
+    latMax: hasGPS ? Math.max(...latVals) : 0,
+    lonMin: hasGPS ? Math.min(...lonVals) : 0,
+    lonMax: hasGPS ? Math.max(...lonVals) : 0,
+  };
+}
+
+// ══════════════════════════════════════════════════════════
+// UI AFTER PARSE
+// ══════════════════════════════════════════════════════════
+function showLogStats(data) {
+  document.getElementById('logStatsSection').style.display = 'block';
+  const dur = data.duration;
+  const mm  = Math.floor(dur/60), ss = Math.floor(dur%60);
+  const stats = [
+    ['FRAMES',   data.frames.length],
+    ['DURATION', `${mm}:${ss.toString().padStart(2,'0')}`],
+    ['MAX ALT',  data.maxAlt.toFixed(1) + 'm'],
+    ['GPS',      data.hasGPS ? 'YES' : 'NO'],
+  ];
+  document.getElementById('logStats').innerHTML = stats.map(([l,v]) =>
+    `<div class="stat-cell"><div class="sl">${l}</div><div class="sv">${v}</div></div>`
+  ).join('');
+}
+
+function enableControls() {
+  ['markRelBtn','calcBtn','playBtn','pauseBtn','resetBtn'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.disabled = false;
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+// TIMELINE
+// ══════════════════════════════════════════════════════════
+function drawTimeline() {
+  const canvas = document.getElementById('tlCanvas');
+  const track  = document.getElementById('tlTrack');
+  canvas.width  = track.clientWidth;
+  canvas.height = track.clientHeight;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  if(!flightData) return;
+
+  const frames = flightData.frames;
+  const n = frames.length;
+  const mid = H/2;
+
+  // Draw roll (red), pitch (green), yaw-rate (cyan) as waveforms
+  const maxRoll  = 30;
+  const maxPitch = 30;
+
+  const drawWave = (vals, maxV, color, alpha) => {
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    vals.forEach((v, i) => {
+      const x = (i / (n-1)) * W;
+      const y = mid - (v/maxV) * (H/2 - 4);
+      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  };
+
+  drawWave(frames.map(f => f.roll),  maxRoll,  '#ff2244', 0.7);
+  drawWave(frames.map(f => f.pitch), maxPitch, '#00ff99', 0.7);
+
+  // Altitude fill
+  const maxAlt = flightData.maxAlt || 1;
+  ctx.fillStyle = 'rgba(0,200,255,0.08)';
+  ctx.beginPath();
+  frames.forEach((f, i) => {
+    const x = (i/(n-1))*W;
+    const y = H - (f.alt/maxAlt)*(H-4) - 2;
+    i===0 ? ctx.moveTo(x,H) : null;
+    ctx.lineTo(x,y);
+  });
+  ctx.lineTo(W,H); ctx.closePath(); ctx.fill();
+
+  // Zero line
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0,mid); ctx.lineTo(W,mid); ctx.stroke();
+
+  // Legend
+  ctx.font = '8px Share Tech Mono';
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = '#ff2244'; ctx.fillText('ROLL', 6, 12);
+  ctx.fillStyle = '#00ff99'; ctx.fillText('PITCH', 40, 12);
+  ctx.fillStyle = '#00c8ff'; ctx.fillText('ALT', 80, 12);
+  ctx.globalAlpha = 1;
+
+  // Time labels
+  const dur = flightData.duration;
+  const mm = n => Math.floor(n/60).toString().padStart(2,'0');
+  const ss = n => Math.floor(n%60).toString().padStart(2,'0');
+  document.getElementById('tlStart').textContent = '00:00';
+  document.getElementById('tlEnd').textContent   = `${mm(dur)}:${ss(dur)}`;
+}
+
+// ── Scrubbing ──
+const tlTrack = document.getElementById('tlTrack');
+let isDragging = false;
+
+tlTrack.addEventListener('mousedown', e => { isDragging=true; scrubTo(e); });
+tlTrack.addEventListener('mousemove', e => { if(isDragging) scrubTo(e); });
+document.addEventListener('mouseup', () => isDragging=false);
+tlTrack.addEventListener('click', scrubTo);
+
+function scrubTo(e) {
+  if(!flightData) return;
+  const rect = tlTrack.getBoundingClientRect();
+  const pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  curIdx = Math.floor(pct * (flightData.frames.length - 1));
+  updateScrubber();
+}
+
+// ══════════════════════════════════════════════════════════
+// MARK RELEASE
+// ══════════════════════════════════════════════════════════
+document.getElementById('markRelBtn').addEventListener('click', () => {
+  if(!flightData) return;
+  releaseIdx = curIdx;
+  const pct = releaseIdx / (flightData.frames.length - 1);
+  const marker = document.getElementById('releaseMarker');
+  marker.style.display = 'block';
+  marker.style.left    = (pct*100).toFixed(2) + '%';
+
+  const f = flightData.frames[releaseIdx];
+  showSnapshot(f);
+  updateMapRelease();
+  drawSideView();
+});
+
+function showSnapshot(f) {
+  const box = document.getElementById('snapBox');
+  box.style.display = 'block';
+
+  // Wind: prefer log wind, fallback to zero
+  const wSpd = f.windSpd !== null ? f.windSpd : 0;
+  const wDir = f.windDir !== null ? f.windDir : 0;
+
+  const rows = [
+    ['Time',    `T+${f.t.toFixed(2)}s`],
+    ['Altitude',`${f.alt.toFixed(1)} m AGL`],
+    ['Roll',    `${f.roll.toFixed(2)}°`],
+    ['Pitch',   `${f.pitch.toFixed(2)}°`],
+    ['Yaw',     `${f.yaw.toFixed(1)}°`],
+    ['GndSpd',  `${f.spd.toFixed(2)} m/s`],
+    ['Vz',      `${f.vz.toFixed(2)} m/s`],
+    ['Wind',    `${wSpd.toFixed(1)} m/s / ${wDir.toFixed(0)}°`],
+  ];
+
+  box.innerHTML = rows.map(([k,v]) =>
+    `<div class="snap-row"><span class="sk">${k}</span><span class="sv">${v}</span></div>`
+  ).join('');
+}
+
+// ══════════════════════════════════════════════════════════
+// PHYSICS ENGINE (RK4)
+// ══════════════════════════════════════════════════════════
+const G_CONST = 9.81;
+const PHYS_DT = 0.005;
+
+function rk4Drop(initX, initY, initVx, initVy, mass, cd, area, rho, windVx, windVy) {
+  // 2D in (downrange X, altitude Y)
+  // Wind = (windVx, windVy) in same frame as vx,vy
+  let x=initX, y=initY, vx=initVx, vy=initVy, t=0;
+  const traj = [{x,y,vx,vy,t}];
+
+  function acc(vx, vy) {
+    const relVx = vx - windVx;
+    const relVy = vy - windVy;
+    const spd = Math.sqrt(relVx*relVx + relVy*relVy);
+    const F = spd < 1e-9 ? 0 : 0.5*rho*spd*spd*cd*area;
+    return {
+      ax: spd < 1e-9 ? 0 : -F*(relVx/spd)/mass,
+      ay: -G_CONST + (spd < 1e-9 ? 0 : -F*(relVy/spd)/mass)
+    };
+  }
+
+  while(y > 0 && t < 300) {
+    const a1 = acc(vx, vy);
+    const vx2=vx+a1.ax*PHYS_DT/2, vy2=vy+a1.ay*PHYS_DT/2;
+    const a2 = acc(vx2,vy2);
+    const vx3=vx+a2.ax*PHYS_DT/2, vy3=vy+a2.ay*PHYS_DT/2;
+    const a3 = acc(vx3,vy3);
+    const vx4=vx+a3.ax*PHYS_DT, vy4=vy+a3.ay*PHYS_DT;
+    const a4 = acc(vx4,vy4);
+
+    vx += (PHYS_DT/6)*(a1.ax+2*a2.ax+2*a3.ax+a4.ax);
+    vy += (PHYS_DT/6)*(a1.ay+2*a2.ay+2*a3.ay+a4.ay);
+    x  += vx*PHYS_DT;
+    y  += vy*PHYS_DT;
+    t  += PHYS_DT;
+
+    if(traj.length < 500) traj.push({x,y,vx,vy,t});
+  }
+  return { landX:x, landY:y, tof:t, traj };
+}
+
+// ── CALCULATE BUTTON ──
+document.getElementById('calcBtn').addEventListener('click', () => {
+  if(!flightData || releaseIdx === null) {
+    alert('Mark a release point first.');
+    return;
+  }
+
+  const f    = flightData.frames[releaseIdx];
+  const mass = parseFloat(document.getElementById('pm').value);
+  const cd   = parseFloat(document.getElementById('cd').value);
+  const area = parseFloat(document.getElementById('pa').value);
+  const rho  = parseFloat(document.getElementById('rho').value);
+
+  // Target / camera inputs
+  const targetOrient = parseFloat(document.getElementById('tor2').value);
+  const camOffFwd    = parseFloat(document.getElementById('camFwd2').value);
+  const camOffRight  = parseFloat(document.getElementById('camRight2').value);
+
+  // ── Wind: prefer log FC estimate, fallback to manual override ──
+  const manualWspd = parseFloat(document.getElementById('ws').value);
+  const manualWdir = parseFloat(document.getElementById('wd').value);
+  const windSpd = (f.windSpd !== null && f.windSpd > 0) ? f.windSpd : manualWspd;
+  const windDir = (f.windDir !== null && f.windSpd > 0) ? f.windDir : manualWdir;
+
+  // Wind vector in NED
+  const windToRad  = ((windDir + 180) % 360) * Math.PI / 180;
+  const windVNorth = windSpd * Math.cos(windToRad);
+  const windVEast  = windSpd * Math.sin(windToRad);
+
+  // ── Attitude-induced initial velocity ──
+  const rollRad  = f.roll  * Math.PI / 180;
+  const pitchRad = f.pitch * Math.PI / 180;
+  const yawRad   = f.yaw   * Math.PI / 180;
+  const RELEASE_DELAY = 0.05;
+  const attVFwd   = G_CONST * Math.sin(pitchRad) * RELEASE_DELAY;
+  const attVRight = G_CONST * Math.sin(rollRad)  * RELEASE_DELAY;
+  const attVNorth = attVFwd*Math.cos(yawRad) - attVRight*Math.sin(yawRad);
+  const attVEast  = attVFwd*Math.sin(yawRad) + attVRight*Math.cos(yawRad);
+
+  // Total initial velocity
+  const initVNorth = f.vx + attVNorth;
+  const initVEast  = f.vy + attVEast;
+  const initVDown  = f.vz;
+
+  // ── Physics (RK4, separate N and E axes) ──
+  const resN = rk4Drop(0, f.alt, initVNorth, -initVDown, mass, cd, area, rho, windVNorth, 0);
+  const resE = rk4Drop(0, f.alt, initVEast,  -initVDown, mass, cd, area, rho, windVEast,  0);
+  const tof    = resN.tof;
+  const dNorth = resN.landX;
+  const dEast  = resE.landX;
+  const totalDrift = Math.sqrt(dNorth*dNorth + dEast*dEast);
+  const bearingDeg = ((Math.atan2(dEast,dNorth)*180/Math.PI)+360)%360;
+
+  // ── Naive comparison (wind only, no attitude/velocity) ──
+  const naiveResN = rk4Drop(0, f.alt, 0, 0, mass, cd, area, rho, windVNorth, 0);
+  const naiveResE = rk4Drop(0, f.alt, 0, 0, mass, cd, area, rho, windVEast,  0);
+  const naiveDrift = Math.sqrt(naiveResN.landX**2 + naiveResE.landX**2);
+  const attVelEffect = totalDrift - naiveDrift;
+
+  // ── Camera aim point in world frame ──
+  // We need drone center to be directly over (target center + drift offset)
+  // Physics aim (world) = -drift (we must be upwind of target by drift amount)
+  const physAimNorth = -dNorth;
+  const physAimEast  = -dEast;
+
+  // Camera offset: drone heading = yaw from telemetry (NOT targetOrient, since we have real yaw)
+  const droneHeadRad = yawRad;
+  const camOffNorth  = camOffFwd*Math.cos(droneHeadRad) - camOffRight*Math.sin(droneHeadRad);
+  const camOffEast   = camOffFwd*Math.sin(droneHeadRad) + camOffRight*Math.cos(droneHeadRad);
+
+  // Net aim point accounting for camera offset
+  const aimNorth = physAimNorth - camOffNorth;
+  const aimEast  = physAimEast  - camOffEast;
+
+  // Project into camera frame (target top = targetOrient)
+  const camTopRad  = targetOrient * Math.PI / 180;
+  const camUp_N    = Math.cos(camTopRad), camUp_E    = Math.sin(camTopRad);
+  const camRight_N = Math.cos(camTopRad+Math.PI/2), camRight_E = Math.sin(camTopRad+Math.PI/2);
+  const aimCamUp    = aimNorth*camUp_N    + aimEast*camUp_E;
+  const aimCamRight = aimNorth*camRight_N + aimEast*camRight_E;
+  const physCamUp    = physAimNorth*camUp_N    + physAimEast*camUp_E;
+  const physCamRight = physAimNorth*camRight_N + physAimEast*camRight_E;
+
+  // Landing GPS
+  const landLat = f.lat !== null ? f.lat + dNorth/111320 : null;
+  const landLon = f.lon !== null ? f.lon + dEast/(111320*Math.cos(f.lat*Math.PI/180)) : null;
+
+  showResults({
+    tof, dNorth, dEast, totalDrift, bearingDeg,
+    naiveDrift, attVelEffect,
+    roll: f.roll, pitch: f.pitch, yaw: f.yaw,
+    initVNorth, initVEast, initVDown,
+    windSpd, windDir,
+    aimCamUp, aimCamRight,
+    physCamUp, physCamRight,
+    camOffFwd, camOffRight,
+    targetOrient,
+    landLat, landLon, alt: f.alt,
+    windSource: (f.windSpd !== null && f.windSpd > 0) ? 'LOG FC' : 'MANUAL'
+  });
+
+  flightData._dropResult = { dNorth, dEast, landLat, landLon, traj: resN.traj };
+  drawSideView(resN.traj, f.alt);
+  updateMapLanding();
+  drawCamMini({ aimCamUp, aimCamRight, physCamUp, physCamRight, camOffFwd, camOffRight, targetOrient });
+});
+
+function showResults(r) {
+  const box = document.getElementById('resultBox');
+  box.style.display = 'block';
+
+  const bear = r.bearingDeg;
+  const windSrc = r.windSource || 'MANUAL';
+  const rows = [
+    ['Time of Flight',  `${r.tof.toFixed(2)} s`],
+    ['North offset',    `${r.dNorth>=0?'+':''}${r.dNorth.toFixed(2)} m`],
+    ['East offset',     `${r.dEast>=0?'+':''}${r.dEast.toFixed(2)} m`],
+    ['Total drift',     `${r.totalDrift.toFixed(2)} m`],
+    ['Direction',       `${bear.toFixed(1)}° (${degToCard(bear)})`],
+    ['Wind used',       `${r.windSpd.toFixed(1)} m/s ${r.windDir.toFixed(0)}° [${windSrc}]`],
+    ['Init Vn/Ve',      `${r.initVNorth.toFixed(2)} / ${r.initVEast.toFixed(2)} m/s`],
+    ['Init Vz',         `${r.initVDown.toFixed(2)} m/s ↓`],
+    ['Aim cam ↑/→',     `${r.aimCamUp>=0?'↑':'↓'}${Math.abs(r.aimCamUp).toFixed(2)}m  ${r.aimCamRight>=0?'→':'←'}${Math.abs(r.aimCamRight).toFixed(2)}m`],
+  ];
+  if(r.landLat) rows.push(['Land GPS', `${r.landLat.toFixed(6)}, ${r.landLon.toFixed(6)}`]);
+
+  box.innerHTML = `<div class="result-title">DROP SOLUTION</div>` +
+    rows.map(([k,v]) => `<div class="result-row"><span class="rk">${k}</span><span class="rv">${v}</span></div>`).join('');
+
+  const cbox = document.getElementById('compareBox');
+  cbox.style.display = 'block';
+  const sign = r.attVelEffect >= 0 ? '+' : '';
+  cbox.innerHTML = `
+    <div class="compare-title">⚖ TELEMETRY vs NAIVE</div>
+    <div class="result-row"><span class="rk">Naive drift (wind only)</span><span class="rv warn">${r.naiveDrift.toFixed(2)} m</span></div>
+    <div class="result-row"><span class="rk">Att+vel correction</span><span class="rv warn">${sign}${r.attVelEffect.toFixed(2)} m</span></div>
+    <div class="result-row"><span class="rk">Roll / Pitch at release</span><span class="rv">${r.roll.toFixed(1)}° / ${r.pitch.toFixed(1)}°</span></div>
+    <div class="result-row"><span class="rk">Yaw (drone heading)</span><span class="rv">${r.yaw.toFixed(1)}°</span></div>
+  `;
+
+  document.getElementById('resultsSection').scrollIntoView({behavior:'smooth'});
+}
+
+// ══════════════════════════════════════════════════════════
+// GPS TRACK — CANVAS (offline, no external deps)
+// ══════════════════════════════════════════════════════════
+function drawGPSTrack() {
+  const canvas = document.getElementById('gpsCanvas');
+  const wrap   = canvas.parentElement;
+  canvas.width  = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  const isEmpty = !flightData || !flightData.hasGPS;
+  document.getElementById('gpsEmpty').style.display = isEmpty ? 'flex' : 'none';
+  if(isEmpty) return;
+
+  const pad = { t:28, b:28, l:44, r:20 };
+  const iW = W - pad.l - pad.r;
+  const iH = H - pad.t - pad.b;
+
+  const frames  = flightData.frames.filter(f => f.lat !== null && f.lat !== 0);
+  const latMin  = flightData.latMin, latMax = flightData.latMax;
+  const lonMin  = flightData.lonMin, lonMax = flightData.lonMax;
+  const latR    = (latMax - latMin) || 0.0001;
+  const lonR    = (lonMax - lonMin) || 0.0001;
+  const maxAlt  = flightData.maxAlt || 1;
+
+  // Keep aspect ratio true to lat/lon (1° lat ≈ 1° lon at equator, adjust for latitude)
+  const latMid  = (latMin + latMax) / 2;
+  const lonScale = Math.cos(latMid * Math.PI / 180); // cos(lat) correction
+  const rawScaleX = iW / (lonR / lonScale);
+  const rawScaleY = iH / latR;
+  const scale = Math.min(rawScaleX, rawScaleY) * 0.88; // 88% to leave breathing room
+
+  const cx = pad.l + iW / 2;
+  const cy = pad.t + iH / 2;
+
+  const toX = lon => cx + ((lon - (lonMin + lonMax)/2) / lonScale) * scale;
+  const toY = lat => cy - (lat - (latMin + latMax)/2) * scale;
+
+  // ── Grid lines (lat/lon graticule) ──
+  ctx.strokeStyle = 'rgba(0,200,255,0.06)'; ctx.lineWidth = 1;
+  for(let i = 0; i <= 4; i++) {
+    const x = pad.l + i * iW/4;
+    const y = pad.t + i * iH/4;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, H-pad.b); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W-pad.r, y); ctx.stroke();
+  }
+
+  // ── Coordinate labels ──
+  ctx.fillStyle = 'rgba(0,200,255,0.25)';
+  ctx.font = '8px Share Tech Mono';
+  ctx.textAlign = 'right';
+  for(let i = 0; i <= 2; i++) {
+    const lat = latMin + i * latR / 2;
+    const y   = toY(lat);
+    ctx.fillText(lat.toFixed(5) + '°', pad.l - 3, y + 3);
+  }
+  ctx.textAlign = 'center';
+  for(let i = 0; i <= 2; i++) {
+    const lon = lonMin + i * lonR / 2;
+    const x   = toX(lon);
+    ctx.fillText(lon.toFixed(5) + '°', x, H - pad.b + 14);
+  }
+  ctx.textAlign = 'left';
+
+  // ── North arrow (top-right) ──
+  const nax = W - pad.r - 18, nay = pad.t + 20;
+  ctx.strokeStyle = 'rgba(255,34,68,0.7)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(nax, nay+14); ctx.lineTo(nax, nay-14); ctx.stroke();
+  // Arrowhead
+  ctx.fillStyle = '#ff2244';
+  ctx.beginPath(); ctx.moveTo(nax,nay-14); ctx.lineTo(nax-5,nay-4); ctx.lineTo(nax+5,nay-4); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(255,34,68,0.6)'; ctx.font = '9px Share Tech Mono';
+  ctx.fillText('N', nax-3, nay-18);
+
+  // ── Scale bar ──
+  // 1° lat = 111320m, so scale bar in metres
+  const barMetres = niceScaleBar(latR * 111320 * 0.25);
+  const barPx     = barMetres / (latR * 111320) * scale * latR / latR * scale;
+  const bx = pad.l + 8, by = H - pad.b - 10;
+  const barW = (barMetres / (latR * 111320)) * scale;
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(bx, by); ctx.lineTo(bx + barW, by);
+  ctx.moveTo(bx, by-4); ctx.lineTo(bx, by+4);
+  ctx.moveTo(bx+barW, by-4); ctx.lineTo(bx+barW, by+4);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '8px Share Tech Mono';
+  ctx.fillText(barMetres >= 1000 ? (barMetres/1000).toFixed(1)+'km' : barMetres+'m', bx + barW/2 - 12, by - 6);
+
+  // ── Flight path (colour by altitude) ──
+  for(let i = 1; i < frames.length; i++) {
+    const a = frames[i-1], b = frames[i];
+    const prog = b.alt / maxAlt;
+    const hue  = 180 - prog * 60;
+    const lum  = 40 + prog * 20;
+    ctx.strokeStyle = `hsl(${hue},100%,${lum}%)`;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(toX(a.lon), toY(a.lat));
+    ctx.lineTo(toX(b.lon), toY(b.lat));
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // ── Start marker (takeoff) ──
+  if(frames.length > 0) {
+    const sf = frames[0];
+    ctx.beginPath(); ctx.arc(toX(sf.lon), toY(sf.lat), 5, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(0,200,255,0.5)'; ctx.fill();
+    ctx.strokeStyle = '#00c8ff'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = 'rgba(0,200,255,0.4)'; ctx.font = '8px Share Tech Mono';
+    ctx.fillText('T/O', toX(sf.lon)+7, toY(sf.lat)+3);
+  }
+
+  // ── Cursor dot (current scrub position) ──
+  const cf = flightData.frames[curIdx];
+  if(cf && cf.lat !== null) {
+    const cpx = toX(cf.lon), cpy = toY(cf.lat);
+    // Outer glow
+    const grd = ctx.createRadialGradient(cpx,cpy,0,cpx,cpy,12);
+    grd.addColorStop(0,'rgba(0,200,255,0.4)'); grd.addColorStop(1,'rgba(0,200,255,0)');
+    ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(cpx,cpy,12,0,Math.PI*2); ctx.fill();
+    // Dot
+    ctx.beginPath(); ctx.arc(cpx,cpy,5,0,Math.PI*2);
+    ctx.fillStyle = '#00c8ff';
+    ctx.shadowBlur=10; ctx.shadowColor='#00c8ff'; ctx.fill(); ctx.shadowBlur=0;
+    // Tooltip
+    ctx.fillStyle='rgba(4,8,12,0.85)'; ctx.strokeStyle='rgba(0,200,255,0.4)'; ctx.lineWidth=1;
+    const tip = `T+${cf.t.toFixed(1)}s  ${cf.alt.toFixed(0)}m  ${cf.spd.toFixed(1)}m/s`;
+    const tw  = ctx.measureText(tip).width + 10;
+    const tx  = Math.min(cpx+10, W-tw-4), ty = cpy-22;
+    ctx.fillRect(tx,ty,tw,16); ctx.strokeRect(tx,ty,tw,16);
+    ctx.fillStyle='#00c8ff'; ctx.font='8px Share Tech Mono';
+    ctx.fillText(tip, tx+5, ty+11);
+  }
+
+  // ── Release marker ──
+  if(releaseIdx !== null) {
+    const rf = flightData.frames[releaseIdx];
+    if(rf && rf.lat !== null) {
+      const rx = toX(rf.lon), ry = toY(rf.lat);
+      ctx.beginPath(); ctx.arc(rx,ry,8,0,Math.PI*2);
+      ctx.strokeStyle='#ffc800'; ctx.lineWidth=2;
+      ctx.shadowBlur=14; ctx.shadowColor='#ffc800'; ctx.stroke(); ctx.shadowBlur=0;
+      ctx.fillStyle='rgba(255,200,0,0.15)'; ctx.fill();
+      ctx.fillStyle='#ffc800'; ctx.font='8px Share Tech Mono';
+      ctx.fillText(`REL  ${rf.alt.toFixed(0)}m`, rx+10, ry+3);
+    }
+  }
+
+  // ── Predicted landing ──
+  if(flightData._dropResult && flightData._dropResult.landLat) {
+    const dr  = flightData._dropResult;
+    const lx  = toX(dr.landLon), ly = toY(dr.landLat);
+    // X marker
+    const xs = 9;
+    ctx.strokeStyle='#00ff99'; ctx.lineWidth=2.5;
+    ctx.shadowBlur=12; ctx.shadowColor='#00ff99';
+    ctx.beginPath();
+    ctx.moveTo(lx-xs,ly-xs); ctx.lineTo(lx+xs,ly+xs);
+    ctx.moveTo(lx+xs,ly-xs); ctx.lineTo(lx-xs,ly+xs);
+    ctx.stroke(); ctx.shadowBlur=0;
+    ctx.fillStyle='#00ff99'; ctx.font='8px Share Tech Mono';
+    ctx.fillText('LANDING', lx+11, ly+3);
+    // Dashed line release → landing
+    if(releaseIdx !== null) {
+      const rf = flightData.frames[releaseIdx];
+      if(rf && rf.lat !== null) {
+        ctx.setLineDash([4,5]);
+        ctx.strokeStyle='rgba(0,255,153,0.45)'; ctx.lineWidth=1.2;
+        ctx.beginPath(); ctx.moveTo(toX(rf.lon),toY(rf.lat)); ctx.lineTo(lx,ly); ctx.stroke();
+        ctx.setLineDash([]);
+        // Distance label at midpoint
+        const mx=(toX(rf.lon)+lx)/2, my=(toY(rf.lat)+ly)/2;
+        const dist = Math.sqrt(dr.dNorth**2+dr.dEast**2).toFixed(1);
+        ctx.fillStyle='rgba(0,255,153,0.6)'; ctx.font='8px Share Tech Mono';
+        ctx.fillText(dist+'m', mx+4, my-4);
+      }
+    }
+  }
+
+  // ── Legend ──
+  const leg = [
+    { color:'#00c8ff', label:'Flight path (alt→colour)' },
+    { color:'#ffc800', label:'Release point' },
+    { color:'#00ff99', label:'Predicted landing' },
+  ];
+  let lx2 = pad.l + 6, ly2 = pad.t + 8;
+  ctx.font = '8px Share Tech Mono';
+  leg.forEach(({color,label}) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(lx2, ly2-5, 14, 3);
+    ctx.fillText(label, lx2+18, ly2);
+    lx2 += ctx.measureText(label).width + 42;
+  });
+}
+
+function niceScaleBar(metres) {
+  const steps = [1,2,5,10,20,50,100,200,500,1000,2000,5000];
+  for(const s of steps) { if(metres/s < 5) return s; }
+  return 5000;
+}
+
+// updateMapCursor / updateMapRelease / updateMapLanding → no-ops (canvas handles it all in drawGPSTrack)
+function updateMapCursor()  { drawGPSTrack(); }
+function updateMapRelease() { drawGPSTrack(); }
+function updateMapLanding() { drawGPSTrack(); }
+
+
+function updateScrubber() {
+  if(!flightData) return;
+  const pct = curIdx / (flightData.frames.length - 1);
+  document.getElementById('scrubber').style.left = (pct*100).toFixed(2) + '%';
+
+  const f = flightData.frames[curIdx];
+  document.getElementById('tlCursorTime').textContent = `T+${f.t.toFixed(2)}s`;
+
+  const sign = v => v >= 0 ? 'pos' : 'neg';
+  document.getElementById('attRoll').textContent  = f.roll.toFixed(1) + '°';
+  document.getElementById('attRoll').className    = 'av ' + sign(f.roll);
+  document.getElementById('attPitch').textContent = f.pitch.toFixed(1) + '°';
+  document.getElementById('attPitch').className   = 'av ' + sign(f.pitch);
+  document.getElementById('attYaw').textContent   = f.yaw.toFixed(1) + '°';
+  document.getElementById('attYaw').className     = 'av';
+  document.getElementById('attAlt').textContent   = f.alt.toFixed(1) + 'm';
+  document.getElementById('attSpd').textContent   = f.spd.toFixed(1) + 'm/s';
+  document.getElementById('attWind').textContent  = f.windSpd !== null ? f.windSpd.toFixed(1)+'m/s' : 'N/A';
+
+  // Update map cursor position
+  updateMapCursor();
+  drawSideView();
+}
+
+// ══════════════════════════════════════════════════════════
+// SIDE VIEW (altitude profile + drop trajectory)
+// ══════════════════════════════════════════════════════════
+function drawSideView(dropTraj, releaseAlt) {
+  const canvas = document.getElementById('sideCanvas');
+  const wrap   = canvas.parentElement;
+  canvas.width  = wrap.clientWidth;
+  canvas.height = wrap.clientHeight - 24; // minus label
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  const pad = {t:20, b:30, l:40, r:20};
+  const iW = W-pad.l-pad.r, iH = H-pad.t-pad.b;
+
+  if(!flightData) return;
+
+  const frames = flightData.frames;
+  const dur = flightData.duration;
+  const maxAlt = Math.max(flightData.maxAlt, releaseAlt||0, 10) * 1.1;
+
+  const toX = t   => pad.l + (t/dur)*iW;
+  const toY = alt => (H-pad.b) - (alt/maxAlt)*iH;
+
+  // Grid
+  ctx.strokeStyle='rgba(0,200,255,0.05)';ctx.lineWidth=1;
+  for(let a=0;a<=maxAlt;a+=Math.pow(10, Math.floor(Math.log10(maxAlt)))) {
+    const y=toY(a);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();
+    ctx.fillStyle='rgba(0,200,255,0.3)';ctx.font='8px Share Tech Mono';
+    ctx.fillText(a.toFixed(0),2,y+3);
+  }
+
+  // Ground line
+  ctx.strokeStyle='#00ff99';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,toY(0));ctx.lineTo(W-pad.r,toY(0));ctx.stroke();
+
+  // Altitude profile
+  ctx.strokeStyle='rgba(0,200,255,0.6)';ctx.lineWidth=1.5;
+  ctx.beginPath();
+  frames.forEach((f,i) => {
+    const x=toX(f.t), y=toY(f.alt);
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+
+  // Release line
+  if(releaseIdx !== null) {
+    const rf = frames[releaseIdx];
+    const rx = toX(rf.t);
+    ctx.strokeStyle='#ffc800';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(rx,pad.t);ctx.lineTo(rx,H-pad.b);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ffc800';ctx.font='8px Share Tech Mono';
+    ctx.fillText('REL',rx+2,pad.t+10);
+  }
+
+  // Drop trajectory
+  if(dropTraj && releaseIdx !== null) {
+    const rf = frames[releaseIdx];
+    const rx = toX(rf.t);
+    const tofScale = (dur > 0 ? iW/dur : 1) * 0.3;
+
+    ctx.strokeStyle='#00ff99';ctx.lineWidth=2;
+    ctx.shadowBlur=6;ctx.shadowColor='#00ff99';
+    ctx.beginPath();
+    dropTraj.forEach((p,i) => {
+      const x = rx + p.t * tofScale;
+      const y = toY(Math.max(0,p.y));
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    ctx.shadowBlur=0;
+  }
+
+  // Cursor
+  if(frames[curIdx]) {
+    const f=frames[curIdx];
+    ctx.strokeStyle='rgba(0,200,255,0.5)';ctx.lineWidth=1;ctx.setLineDash([2,4]);
+    ctx.beginPath();ctx.moveTo(toX(f.t),pad.t);ctx.lineTo(toX(f.t),H-pad.b);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// PLAYBACK
+// ══════════════════════════════════════════════════════════
+function setSpeed(s) {
+  playSpeed = s;
+  ['spd1','spd5','spd20'].forEach(id => document.getElementById(id).classList.remove('active'));
+  document.getElementById('spd'+s).classList.add('active');
+}
+
+document.getElementById('playBtn').addEventListener('click', () => {
+  if(!flightData) return;
+  if(playTimer) return;
+  playTimer = setInterval(() => {
+    curIdx = Math.min(curIdx + playSpeed, flightData.frames.length - 1);
+    updateScrubber();
+    if(curIdx >= flightData.frames.length - 1) {
+      clearInterval(playTimer);
+      playTimer = null;
+    }
+  }, 100);
+});
+
+document.getElementById('pauseBtn').addEventListener('click', () => {
+  clearInterval(playTimer); playTimer = null;
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  clearInterval(playTimer); playTimer = null;
+  curIdx = 0;
+  updateScrubber();
+});
+
+// ══════════════════════════════════════════════════════════
+// CAMERA AIM MINI VIEW
+// ══════════════════════════════════════════════════════════
+const FT_TO_M2 = 0.3048;
+const TARGETS2 = [
+  { m: 5*FT_TO_M2,  color:'#ff2244', label:'5ft' },
+  { m: 7*FT_TO_M2,  color:'#ffc800', label:'7ft' },
+  { m: 10*FT_TO_M2, color:'#00c8ff', label:'10ft' },
+];
+
+function drawCamMini({ aimCamUp, aimCamRight, physCamUp, physCamRight, camOffFwd, camOffRight, targetOrient }) {
+  document.getElementById('camPanel').classList.add('show');
+  const canvas = document.getElementById('camMini');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cx = W/2, cy = H/2;
+  ctx.clearRect(0,0,W,H);
+
+  // Background
+  ctx.fillStyle = '#0a150a'; ctx.fillRect(0,0,W,H);
+
+  const outerM = TARGETS2[2].m;
+  const pxPerM = (W*0.35) / outerM;
+  const isSquare = targetShape2 === 'square';
+
+  // Draw target rings
+  TARGETS2.forEach(t => {
+    const r = (t.m/2)*pxPerM;
+    ctx.strokeStyle = t.color; ctx.lineWidth=1.5;
+    ctx.globalAlpha=0.7; ctx.shadowBlur=6; ctx.shadowColor=t.color;
+    if(isSquare) { ctx.beginPath(); ctx.rect(cx-r,cy-r,r*2,r*2); ctx.stroke(); }
+    else { ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke(); }
+    ctx.shadowBlur=0; ctx.globalAlpha=1;
+    ctx.fillStyle=t.color; ctx.font='8px Share Tech Mono';
+    ctx.fillText(t.label, cx+r+2, cy-2);
+  });
+
+  // Cardinal labels (rotate with targetOrient)
+  const outerR = (TARGETS2[2].m/2)*pxPerM;
+  ['N','E','S','W'].forEach((c,i) => {
+    const camAngleDeg = i*90 - targetOrient;
+    const rad = camAngleDeg*Math.PI/180;
+    const lr = outerR*1.3;
+    ctx.fillStyle='rgba(0,200,255,0.5)'; ctx.font='8px Share Tech Mono';
+    ctx.fillText(c, cx+lr*Math.sin(rad)-4, cy-lr*Math.cos(rad)+4);
+  });
+
+  // North arrow
+  const northRad = -targetOrient*Math.PI/180;
+  ctx.strokeStyle='rgba(255,34,68,0.7)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(cx+W*0.35,cy-H*0.35);
+  ctx.lineTo(cx+W*0.35+14*Math.sin(northRad), cy-H*0.35-14*Math.cos(northRad)); ctx.stroke();
+  ctx.fillStyle='#ff2244'; ctx.font='8px Share Tech Mono';
+  ctx.fillText('N', cx+W*0.35+16*Math.sin(northRad)-3, cy-H*0.35-16*Math.cos(northRad)+3);
+
+  // Crosshair (camera center)
+  ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=0.5;
+  ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,H);
+  ctx.moveTo(0,cy); ctx.lineTo(W,cy); ctx.stroke();
+
+  const aimPxX = cx + aimCamRight*pxPerM;
+  const aimPxY = cy - aimCamUp*pxPerM;
+
+  // Physics-only ghost (if camera offset exists)
+  const hasCamOff = camOffFwd!==0||camOffRight!==0;
+  if(hasCamOff) {
+    const ppx = cx + physCamRight*pxPerM, ppy = cy - physCamUp*pxPerM;
+    ctx.strokeStyle='rgba(0,200,255,0.3)'; ctx.lineWidth=1; ctx.setLineDash([3,4]);
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(ppx,ppy); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(ppx,ppy,3,0,Math.PI*2);
+    ctx.strokeStyle='rgba(0,200,255,0.4)'; ctx.stroke();
+  }
+
+  // Aim line
+  ctx.strokeStyle='rgba(0,255,153,0.5)'; ctx.lineWidth=1; ctx.setLineDash([3,4]);
+  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(aimPxX,aimPxY); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Aim glow
+  const grd=ctx.createRadialGradient(aimPxX,aimPxY,0,aimPxX,aimPxY,18);
+  grd.addColorStop(0,'rgba(0,255,153,0.3)'); grd.addColorStop(1,'rgba(0,255,153,0)');
+  ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(aimPxX,aimPxY,18,0,Math.PI*2); ctx.fill();
+
+  // Aim crosshair
+  const s=8;
+  ctx.strokeStyle='#00ff99'; ctx.lineWidth=1.5;
+  ctx.shadowBlur=6; ctx.shadowColor='#00ff99';
+  ctx.beginPath();
+  ctx.moveTo(aimPxX-s,aimPxY); ctx.lineTo(aimPxX+s,aimPxY);
+  ctx.moveTo(aimPxX,aimPxY-s); ctx.lineTo(aimPxX,aimPxY+s);
+  ctx.stroke();
+  ctx.beginPath(); ctx.arc(aimPxX,aimPxY,4,0,Math.PI*2); ctx.stroke();
+  ctx.shadowBlur=0;
+
+  // Instruction text
+  const parts=[];
+  if(Math.abs(aimCamUp)>0.02)    parts.push(`${Math.abs(aimCamUp).toFixed(2)}m ${aimCamUp>0?'UP':'DOWN'}`);
+  if(Math.abs(aimCamRight)>0.02) parts.push(`${Math.abs(aimCamRight).toFixed(2)}m ${aimCamRight>0?'RIGHT':'LEFT'}`);
+  const instr = parts.length ? '⬤ AIM: ' + parts.join(' + ') + ' from crosshair' + (hasCamOff?' [cam offset applied]':'')
+                              : 'AIM DIRECTLY AT CENTER';
+  document.getElementById('aimInstr2').textContent = instr;
+}
+
+// ══════════════════════════════════════════════════════════
+// UTILITIES
+// ══════════════════════════════════════════════════════════
+function degToCard(d) {
+  const v = ((+d)%360+360)%360;
+  return ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW']
+    [Math.round(v/22.5)%16];
+}
+
+window.addEventListener('resize', () => {
+  if(flightData) { drawTimeline(); drawGPSTrack(); drawSideView(); }
+});
+</script>
+</body>
+</html>
